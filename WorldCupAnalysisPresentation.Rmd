@@ -1,0 +1,336 @@
+---
+title: "World Cup Data Analysis"
+author: "CS"
+date: "2022-11-03"
+output: 
+  beamer_presentation:
+    theme: "CambridgeUS"
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{multirow}
+  - \usepackage{wrapfig}
+  - \usepackage{float}
+  - \usepackage{colortbl}
+  - \usepackage{pdflscape}
+  - \usepackage{tabu}
+  - \usepackage{threeparttable}
+  - \usepackage{threeparttablex}
+  - \usepackage[normalem]{ulem}
+  - \usepackage{makecell}
+  - \usepackage{xcolor}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(dplyr)
+library(ggplot2)
+library(psych)
+library(sos)
+library(kableExtra)
+library(knitr)
+library(ggthemes)
+wc_dat <- read.csv('matches.csv', header=TRUE)
+```
+
+## Introduction
+
+* Data analysis on World cup data from 1930 - 2018
+* Based all matches that occurred
+* Found via \url{https://www.kaggle.com/datasets/abecklas/fifa-world-cup}
+* Contains over 500 records and 15 columns of data
+
+## Data description
+
+```{r, Intro, fig.dim = c(2,2)}
+#getting structure of the dataset - based on two observations as makes it simple to display
+str(head(wc_dat, 2))
+```
+
+
+## Questions for the analysis
+
+1. What is the trend of total goals scored over every world cup?
+2. What is the trend of average goals scored per match over every world cup?
+3. Which nations have won the most world cups?
+4. Which nations have won the world cup on home soil?
+5. Who are the top 6 nations with the most world cup match wins?
+6. Who are the top 6 nations with the best average goals per match in the world cup?
+7. Who are the biggest world cup losers of all time?
+
+
+## 1. What is the trend of total goals over every world cup?
+
+::: columns
+:::: column
+```{r, Q1, echo=FALSE, fig.width =4, fig.height=3}
+#grabbing the total goals score for home teams grouped by year
+home_scores <- wc_dat %>%
+  select(year, home_team, home_score) %>% 
+  group_by(year,home_team) %>% 
+  summarise(total = sum(home_score), .groups = 'drop')
+
+#doing the same as above but for away
+away_scores <- wc_dat %>% 
+  select(year, away_team, away_score) %>% 
+  group_by(year,away_team) %>% 
+  summarise(total = sum(away_score), .groups = 'drop')
+
+#using left join to combine both home and away totals per year
+scores <-left_join(home_scores, away_scores, by=c('year'='year', 'home_team'='away_team'))
+
+#now removing nulls and getting the total row sums between the home and away and storing within within a total goals
+scores <- scores %>% 
+  replace(is.na(.), 0) %>% 
+  select(everything()) %>% 
+  mutate(total_goals = rowSums(across(c(total.x, total.y))))
+colnames(scores) <- c('year', 'nation', 'home_goals', 'away_goals', 'total_goals')
+
+## selecting the year and total goals and grouping by years
+yearly_goals <- scores %>% 
+  select(year,total_goals) %>% 
+  group_by(year) %>% 
+  summarise(total_goals = sum(total_goals), .groups = 'drop')
+
+#visualizing our solution where we colour based on year with scale_fill_hue(). Displays total goals each year trend
+ggplot(yearly_goals, aes(year, total_goals, fill=as.character(year)))+geom_bar(stat='identity')+
+  geom_text(aes(label=year), size=2)+ coord_flip()+scale_fill_hue(h = c(180, 300))+theme(legend.position='none')+labs(x="Goal Total", y="Year")
+
+```
+
+::::
+:::: column
+* Total goals have increased overtime
+* 2014 had the most number of goals scored with 171
+* There is a gap in between 1938-1950. Possibly due to WWII (1939-45)
+::::
+:::
+
+## 2. What is the trend of average goals scored per match over every world cup?
+::: columns
+:::: column
+* The average goals per match is decreasing overtime
+* Peaking at 2.7 in 1954
+* Some world cups had an average goals per match 1.1
+* Stayed fairly consistent/similar since 1962 and onwards
+::::
+:::: column
+```{r, Q2, echo=FALSE, fig.width =4, fig.height=3}
+#getting the average goals per home nation grouped by year
+home_average <- wc_dat %>%
+  select(year, home_score) %>% 
+  group_by(year) %>% 
+  summarise(homeavg_goals = mean(home_score))
+#getting the average goals per away nation grouped by year
+away_average <- wc_dat %>%
+  select(year, away_score) %>% 
+  group_by(year) %>% 
+  summarise(awayavg_goals = mean(away_score))
+#combining home and away together with left join
+average_goals <-left_join(home_average, away_average, by=c('year'='year'))
+#simiarly to q1 getting the rowMeans (instead of rowSums) of home and away to get the total average
+overall_avg <- average_goals %>% 
+  select(everything()) %>% 
+  mutate(average_goals = rowMeans(across(c(homeavg_goals, awayavg_goals))))
+#producing this result via a gg line plot
+ggplot(overall_avg, aes(year, average_goals))+geom_line(colour = "firebrick", size=2)+geom_point(size=2)+labs(x= "Year", y="Average goals")
+
+```
+::::
+:::
+
+## 3. Which nations have won the most world cups?
+::: columns
+:::: column
+```{r, Q3, echo=FALSE}
+#teams who have won the most finals
+#fairly simple, filter the stage to finals for winner field, count then arrange in descending to get highest first
+winners <- wc_dat %>% 
+  select(winning_team,stage) %>% 
+  filter(stage=='Final') %>% 
+  count(winning_team) %>% 
+  arrange(desc(n)) %>% 
+  rename(Nation=winning_team, Wins=n)
+#storing within a kable table
+kable(winners) %>% 
+  kable_styling(latex_options = "striped")
+```
+::::
+:::: column
+* Brazil is #1!
+* Not far behind is Italy with 4
+* France the recent winners have 2
+* Germany have a total of 4 (if we include both West Germany)
+::::
+:::
+
+## 4. Which nations have won the world cup on home soil?
+
+::: columns
+:::: column
+* All have only won once
+* 5/9 teams have won the world cup on home turf
+* Most recent winner on home turf was France in 1998
+::::
+:::: column
+
+```{r, Q4, echo=FALSE}
+#similar to Q4 but we also filter by if country and winning team are the same result
+home_soil <-wc_dat %>% 
+  select(winning_team, country, stage, year) %>% 
+  filter(stage == 'Final' ) %>% 
+  filter(country == winning_team) %>% 
+  select(winning_team, year) %>% 
+  rename(Nation=winning_team, Year=year)
+#display as a kable table
+kable(home_soil) %>% 
+  kable_styling(latex_options = "striped")
+```
+::::
+:::
+
+
+## 5. Who are the top 6 nations with the most world cup match wins?
+::: columns
+:::: column
+```{r, Q5, echo=FALSE}
+#counting the total for each winning team and arranging in descending to get the top
+winning_team <- wc_dat %>%
+  select(winning_team) %>% 
+  count(winning_team) %>% 
+  arrange(desc(n)) %>% 
+  na.omit() %>% 
+  #use top_n() to filter the top 6
+  top_n(6, n) %>% 
+  rename(Total_wins= n, Nation=winning_team)
+#display the results via kable
+kable(winning_team) %>% 
+  kable_styling(latex_options = "striped")
+
+
+```
+::::
+:::: column
+* Brazil dominates
+* Germany really have 71
+* Brazil and Germany dominate in wins
+::::
+:::
+
+## 6. Who are the top 6 nations with the best best average goals per match in the world cup?
+::: columns
+:::: column
+- Hungary are #1!
+- Turkey, Yugoslavia, Hungary all have done well
+- We assume this is due to them having less matches
+::::
+:::: column
+```{r, Q6, echo=FALSE}
+#collecting the home average score based on home team
+home_average <- wc_dat %>%
+  select(home_team, home_score) %>% 
+  group_by(home_team) %>% 
+  summarise(homeavg_goals = mean(home_score))
+
+#collecting the away average score based on away team
+away_average <- wc_dat %>%
+  select(away_team, away_score) %>% 
+  group_by(away_team) %>% 
+  summarise(awayavg_goals = mean(away_score))
+#combining home and away via left join
+average_goals <-left_join(home_average, away_average, by=c('home_team'='away_team'))
+#getting getting the row means of both home and away to get the final average goals per each nation
+# arranged in descending as we want the top
+overall_avg <- average_goals %>% 
+  select(everything()) %>% 
+  mutate(average_goals = rowMeans(across(c(homeavg_goals, awayavg_goals)))) %>% 
+  select(home_team, average_goals) %>% 
+  arrange(desc(average_goals)) %>% 
+  #want top 6 so use top_n()
+  top_n(6, average_goals) %>% 
+  mutate(average_goals=round(average_goals,2)) %>% 
+  rename(Nation=home_team, Average_goals = average_goals)
+#display as a kable table
+kable(overall_avg) %>% 
+  kable_styling(latex_options = "striped")
+```
+::::
+:::
+
+
+## 7. Who are the biggest world cup losers of all time?
+
+::: columns
+::: column
+```{r, Q7, echo=FALSE}
+#this result may be the smallest but there is a lot that need to be considered to procduce this correctly
+
+#firstly grab all nations that have lost a match that does not existing within the winning field
+#then getting one of that nation
+countries <- wc_dat %>%
+  select(winning_team, losing_team, year, outcome) %>% 
+  filter(!losing_team %in% winning_team) %>% 
+  select(losing_team) %>% 
+  distinct() %>% 
+  rename(nation=losing_team)
+
+#we also need to consider draws as they are not considered a win or loss
+# can be found through the outcome field as 'D' so filter all draws
+draw <- wc_dat %>% 
+  select(home_team, away_team, outcome) %>% 
+  filter(outcome == 'D')
+
+#Now we get the losing teams so we can get the total count
+losing_team <- wc_dat %>%
+  select(losing_team) %>% 
+  count(losing_team) %>% 
+  arrange(desc(n)) %>% 
+  na.omit() %>% 
+  rename(nation = losing_team)
+
+#getting the total score for both home and away to prove that our result is zero
+home_sum <- wc_dat %>%
+  select(home_team, home_score) %>% 
+  group_by(home_team) %>% 
+  summarise(home_goals = sum(home_score))
+away_sum <- wc_dat %>%
+  select(away_team, away_score) %>% 
+  group_by(away_team) %>% 
+  summarise(away_goals = sum(away_score))
+#and combining like previous questions have
+total_goals <-left_join(home_sum, away_sum, by=c('home_team'='away_team'))
+#now collecting the total amount of goals for both home and away
+overall_sum <- total_goals %>% 
+  select(everything()) %>% 
+  mutate(total_goals = rowSums(across(c(home_goals, away_goals)))) %>% 
+  select(home_team, total_goals) %>% 
+  arrange(desc(total_goals))
+
+#now we have all our checking methods so we will filter through overall_sum
+# we will filter if total goals is zero
+# inner join with countries and losing team records
+# filter to check if the nation is contained within the home draw field and the away field, it should not
+# then our final results will be all teams with no wins and no goals plus their total matches played
+biggest_losers <- overall_sum %>% 
+  rename(nation=home_team) %>% 
+  filter(total_goals == 0) %>% 
+  inner_join(countries, by='nation') %>% 
+  inner_join(losing_team, by='nation') %>% 
+  filter(!nation %in% draw$home_team) %>% 
+  filter(!nation %in% draw$away_team) %>% 
+  rename(Nation=nation, Matches=n, Goals = total_goals)
+#displaying as a kable table
+kable(biggest_losers) %>% 
+  kable_styling(latex_options = "striped")
+```
+::::
+:::: column
+* A 'Biggest loser' is a nation with no wins nor goals
+* Canada and China are fairly big nations yet have had poor success
+* Canada will be attending  Qatar 2022
+::::
+:::
+
+## Thank you
+- There is still plenty of other things to consider!!!
